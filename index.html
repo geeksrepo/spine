@@ -125,6 +125,21 @@
   .saving{position:fixed;bottom:calc(16px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%) translateY(20px);background:var(--ink);color:#fff;font-size:12px;font-weight:600;padding:7px 14px;border-radius:20px;opacity:0;transition:all .25s;pointer-events:none;}
   .saving.show{opacity:.92;transform:translateX(-50%) translateY(0);}
   .foot{text-align:center;color:var(--faint);font-size:11px;margin-top:22px;}
+  .minibtn{display:inline-flex;align-items:center;gap:6px;background:var(--accent);color:#fff;border:none;border-radius:10px;padding:9px 15px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;}
+  .minibtn:active{transform:scale(.97);}
+  .minibtn.ghost{background:var(--surface-2);color:var(--ink);border:1px solid var(--line);}
+  .io-area{width:100%;margin-top:10px;border:1.5px solid var(--line);background:var(--surface-2);border-radius:10px;padding:9px 11px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;line-height:1.4;color:var(--ink);min-height:64px;resize:vertical;outline:none;}
+  .io-area:focus{border-color:var(--accent);}
+  .hist-row{display:flex;flex-wrap:wrap;align-items:center;gap:9px;padding:10px 0;border-bottom:1px solid var(--line);font-size:13px;}
+  .hist-row:last-child{border-bottom:none;}
+  .hist-date{font-weight:600;color:var(--ink);min-width:104px;}
+  .hist-leg{font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 9px;border-radius:20px;}
+  .leg-better{background:var(--accent-soft);color:var(--accent-ink);}
+  .leg-same{background:var(--gold-soft);color:#7a5b14;}
+  .leg-worse{background:var(--clay-soft);color:#8E4424;}
+  .hist-done{margin-left:auto;font-weight:600;color:var(--muted);}
+  .hist-note{flex-basis:100%;color:var(--muted);font-size:12px;font-style:italic;}
+  .hist-empty{color:var(--faint);font-size:13px;padding:4px 0;}
 </style>
 </head>
 <body>
@@ -176,6 +191,25 @@
         <li><b>Sit-ups, crunches, toe-touches</b>, and heavy/jerky movements</li>
         <li>Deep forward bending in the <b>first hour after waking</b></li>
       </ul>
+    </div>
+  </details>
+
+  <details class="box">
+    <summary>📅 History &amp; trend <span class="chev">⌄</span></summary>
+    <div class="inner dark" style="padding-bottom:14px;">
+      <div id="histList"></div>
+    </div>
+  </details>
+
+  <details class="box">
+    <summary>💾 Backup / move to a new phone <span class="chev">⌄</span></summary>
+    <div class="inner dark" style="padding-bottom:14px;">
+      <p style="margin:2px 0 0;">Your log is saved on this device only. Copy it to back it up, send it to someone, or move to a new phone.</p>
+      <button class="minibtn" id="copyBtn" style="margin-top:10px;">Copy my data</button>
+      <textarea class="io-area" id="exportArea" readonly placeholder="(your data appears here)"></textarea>
+      <p style="margin:14px 0 0;font-weight:600;color:var(--ink);">Restore from a backup</p>
+      <textarea class="io-area" id="importArea" placeholder="Paste backup data here…"></textarea>
+      <button class="minibtn ghost" id="restoreBtn" style="margin-top:8px;">Restore</button>
     </div>
   </details>
 
@@ -240,8 +274,9 @@ function load(){
   if(!data.days) data.days={};
 }
 let savingTimer=null;
-function save(){ lsSet(KEY,JSON.stringify(data)); flashSaved(); }
-function flashSaved(){ const s=document.getElementById('saving'); s.classList.add('show'); clearTimeout(savingTimer); savingTimer=setTimeout(()=>s.classList.remove('show'),900); }
+function save(){ lsSet(KEY,JSON.stringify(data)); toast('Saved'); refreshAll(); }
+function toast(msg){ const s=document.getElementById('saving'); s.textContent=msg; s.classList.add('show'); clearTimeout(savingTimer); savingTimer=setTimeout(()=>s.classList.remove('show'),1000); }
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 function keyOf(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function todayKey(){ return keyOf(new Date()); }
@@ -289,6 +324,24 @@ function updateStats(){
   const fg=document.getElementById('ringFg'); fg.setAttribute('stroke-dasharray',C.toFixed(1)); fg.setAttribute('stroke-dashoffset',off.toFixed(1));
   document.getElementById('celebrate').classList.toggle('show', doneN===REQUIRED.length);
 }
+function renderHistory(){
+  const box=document.getElementById('histList'); if(!box) return;
+  const keys=Object.keys(data.days).sort().reverse();
+  const active=keys.filter(k=>{const r=data.days[k];return (r.done&&Object.keys(r.done).length)||r.leg||(r.note&&r.note.trim());});
+  if(!active.length){ box.innerHTML='<div class="hist-empty">No entries yet — check things off and your daily log builds here.</div>'; return; }
+  box.innerHTML=active.map(k=>{
+    const r=data.days[k];
+    const d=new Date(k+'T00:00:00');
+    const ds=d.toLocaleDateString(undefined,{weekday:'short',day:'numeric',month:'short'});
+    const n=REQUIRED.filter(id=>r.done&&r.done[id]).length;
+    const doneTxt = isComplete(r) ? '✓ all' : n+'/'+REQUIRED.length;
+    const leg = r.leg ? '<span class="hist-leg leg-'+r.leg+'">'+r.leg+'</span>' : '';
+    const note = (r.note&&r.note.trim()) ? '<div class="hist-note">“'+escapeHtml(r.note.trim())+'”</div>' : '';
+    return '<div class="hist-row"><span class="hist-date">'+ds+'</span>'+leg+'<span class="hist-done">'+doneTxt+'</span>'+note+'</div>';
+  }).join('');
+}
+function refreshExport(){ const t=document.getElementById('exportArea'); if(t) t.value=JSON.stringify(data); }
+function refreshAll(){ updateStats(); renderHistory(); refreshExport(); }
 function renderLeg(){
   const rec=day(todayKey());
   document.querySelectorAll('.legbtn').forEach(b=>b.classList.toggle('on', rec.leg===b.dataset.v));
@@ -300,11 +353,24 @@ function initEvents(){
   });
   let nt=null;
   document.getElementById('note').addEventListener('input',e=>{ const rec=day(todayKey()); rec.note=e.target.value; clearTimeout(nt); nt=setTimeout(save,500); });
-  document.getElementById('resetBtn').addEventListener('click',()=>{ if(confirm("Reset today's checkmarks? (Your streak and past days stay.)")){ const rec=day(todayKey()); rec.done={}; renderRoutine(); updateStats(); save(); } });
+  document.getElementById('resetBtn').addEventListener('click',()=>{ if(confirm("Reset today's checkmarks? (Your streak and past days stay.)")){ const rec=day(todayKey()); rec.done={}; renderRoutine(); save(); } });
+  document.getElementById('copyBtn').addEventListener('click', async ()=>{
+    const txt=JSON.stringify(data);
+    try{ await navigator.clipboard.writeText(txt); toast('Copied'); }
+    catch(e){ const t=document.getElementById('exportArea'); t.value=txt; t.focus(); t.select(); toast('Selected — tap Copy'); }
+  });
+  document.getElementById('restoreBtn').addEventListener('click',()=>{
+    const t=document.getElementById('importArea'); const raw=(t.value||'').trim();
+    if(!raw){ toast('Paste a backup first'); return; }
+    let parsed; try{ parsed=JSON.parse(raw); }catch(e){ alert("That doesn't look like valid backup data."); return; }
+    if(!parsed||typeof parsed!=='object'||!parsed.days){ alert('Backup format not recognized.'); return; }
+    if(!confirm('Restore this backup? It will replace the data on this device.')) return;
+    data=parsed; if(!data.days) data.days={}; save(); renderRoutine(); renderLeg(); t.value=''; toast('Restored');
+  });
 }
 function setDate(){ document.getElementById('dateLine').textContent=new Date().toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long'}); }
 
-setDate(); load(); renderRoutine(); renderLeg(); updateStats(); initEvents();
+setDate(); load(); renderRoutine(); renderLeg(); refreshAll(); initEvents();
 </script>
 </body>
 </html>
